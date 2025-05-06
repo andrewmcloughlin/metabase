@@ -97,6 +97,11 @@ export type KeyboardShortcutPerformEvent = ValidateEvent<{
   event_detail: KeyboardShortcutId;
 }>;
 
+export type NewEntityInitiated = ValidateEvent<{
+  event: "plus_button_clicked";
+  triggered_from: "model" | "metric" | "collection";
+}>;
+
 export type SimpleEvent =
   | CSVUploadClickedEvent
   | DatabaseAddClickedEvent
@@ -110,4 +115,5 @@ export type SimpleEvent =
   | ErrorDiagnosticModalSubmittedEvent
   | GsheetsConnectionClickedEvent
   | GsheetsImportClickedEvent
-  | KeyboardShortcutPerformEvent;
+  | KeyboardShortcutPerformEvent
+  | NewEntityInitiated;
