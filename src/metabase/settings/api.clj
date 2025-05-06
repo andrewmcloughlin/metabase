@@ -1,6 +1,7 @@
 (ns metabase.settings.api
   "/api/setting endpoints"
   (:require
+   [clojure.string :as str]
    [metabase.api.common :as api]
    [metabase.api.common.validation :as validation]
    [metabase.api.macros :as api.macros]
@@ -49,7 +50,14 @@
   [{:keys [key]} :- [:map
                      [:key kebab-cased-keyword]]]
   (with-setting-access-control
-    (setting/user-facing-value key)))
+    (let [value (setting/user-facing-value key)]
+      (if-not (and (string? value) (str/starts-with? value "data:"))
+        value
+        (let [[header body] (str/split (setting/user-facing-value key) #"," 2)
+              [_ content-type _] (str/split header #":|;" 3)]
+          {:status 200
+           :headers (if content-type {"Content-Type" content-type} {})
+           :body (u/decode-base64-to-bytes body)})))))
 
 (api.macros/defendpoint :put "/:key"
   "Create/update a `Setting`. If called by a non-admin, only user-local settings can be updated.

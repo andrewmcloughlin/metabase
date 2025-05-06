@@ -8,6 +8,7 @@
    [metabase.settings.models.setting-test :as models.setting-test]
    [metabase.test :as mt]
    [metabase.test.fixtures :as fixtures]
+   [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru]]
    [metabase.util.log.capture :as log.capture]))
 
@@ -36,6 +37,12 @@
   (deferred-tru "Setting to test the `:settings-manager` visibility level. This only shows up in dev.")
   :visibility :settings-manager
   :encryption :when-encryption-key-set)
+
+(defsetting test-api-setting-data-url
+  (deferred-tru "Test setting for data URL handling in API")
+  :visibility :public
+  :type :string
+  :encryption :no)
 
 ;; ## Helper Fns
 (defn- fetch-test-settings
@@ -130,7 +137,16 @@
       (is (true? (fetch-setting :test-api-setting-boolean 200)))
 
       (test-api-setting-integer! 42)
-      (is (= 42 (fetch-setting :test-api-setting-integer 200))))))
+      (is (= 42 (fetch-setting :test-api-setting-integer 200))))
+
+    (testing "Test that data URLs with explicit content type are handled correctly"
+      (let [data-url "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            base64-data "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            expected-body-bytes (String. (u/decode-base64-to-bytes base64-data))]
+        (test-api-setting-data-url! data-url)
+        (mt/with-temporary-setting-values [test-api-setting-data-url data-url])
+        (let [response (fetch-setting :test-api-setting-data-url 200)]
+          (is (= expected-body-bytes response)))))))
 
 (deftest ^:parallel engines-mark-h2-superseded-test
   (testing "GET /api/setting/:key"
