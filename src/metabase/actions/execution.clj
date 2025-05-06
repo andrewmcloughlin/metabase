@@ -203,13 +203,16 @@
   (let [dashcard (api/check-404 (t2/select-one :model/DashboardCard
                                                :id dashcard-id
                                                :dashboard_id dashboard-id))
-        action (api/check-404 (action/select-action :id (:action_id dashcard)))]
-    (analytics/track-event! :snowplow/action
-                            {:event     :action-executed
-                             :source    :dashboard
-                             :type      (:type action)
-                             :action_id (:id action)})
-    (execute-action! action request-parameters)))
+        action-id (api/check-404 (:action_id dashcard))]
+
+    (if (neg? action-id)
+      (let [action (api/check-404 (action/select-action :id (:action_id dashcard)))]
+        (analytics/track-event! :snowplow/action
+                                {:event     :action-executed
+                                 :source    :dashboard
+                                 :type      (:type action)
+                                 :action_id (:id action)})
+        (execute-action! action request-parameters)))))
 
 (defn- fetch-implicit-action-values
   [action request-parameters]

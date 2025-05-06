@@ -1,5 +1,6 @@
 (ns metabase.actions.models
   (:require
+   [clojure.set :as set]
    [medley.core :as m]
    [metabase.models.interface :as mi]
    [metabase.models.query :as query]
@@ -12,6 +13,8 @@
    [methodical.core :as methodical]
    [toucan2.core :as t2]
    [toucan2.tools.hydrate :as t2.hydrate]))
+
+(set! *warn-on-reflection* true)
 
 ;;; -------------------------------------------- Entity & Life Cycle ----------------------------------------------
 
@@ -123,8 +126,7 @@
       (t2/query-one {:insert-into (t2/table-name model)
                      :values [(-> (apply dissoc action-data action-columns)
                                   (assoc :action_id (:id action))
-                                  (cond->
-                                   (= (:type action) :implicit)
+                                  (cond-> (= (:type action) :implicit)
                                     (dissoc :database_id)
                                     (= (:type action) :http)
                                     (update :template json/encode)
@@ -330,22 +332,115 @@
            (assoc action :database_enabled_actions (get id->database-enable-actions (:id action))))
          actions)))
 
-(methodical/defmethod t2.hydrate/batched-hydrate [:model/DashboardCard :dashcard/action]
-  "Hydrates actions from DashboardCards. Adds a boolean field `:database-enabled-actions` to each action according to
-  the\n `database-enable-actions` setting for the action's database."
-  [_model _k dashcards]
-  (let [actions-by-id (when-let [action-ids (seq (keep :action_id dashcards))]
-                        (->> (select-actions nil :id [:in action-ids])
-                             map-assoc-database-enable-actions
-                             (m/index-by :id)))]
-    (for [dashcard dashcards]
-      (m/assoc-some dashcard :action (get actions-by-id (:action_id dashcard))))))
+;; to avoid headaches with rewriting too much frontend code we will hack in a representation an operation and a single
+;; parameter as an integer. The frontend picker can when creating the dashcard pass the negative action_id.
+;; we will use an integer with an op (15 bits) and param (32 bits)
+;; to start with table actions, the param is the table-id.
+(def ^:private primitive-action-op {:create 0 :update 1 :delete 2})
+(def ^:private int->primitive-action-op (set/map-invert primitive-action-op))
+
+(defn unpack-primitive-action-id
+  "Return an [op param] vector given the negative action id."
+  [^long encoded-id]
+  (let [pos-id     (bit-and (Math/abs encoded-id) 0xFFFFFFFFFFFF)
+        param-bits (bit-and pos-id 0xFFFFFFFF)
+        op-bits    (bit-and (bit-shift-right pos-id 32) 0xFFFF)]
+    [(int->primitive-action-op op-bits) param-bits]))
+
+(defn- primitive-action-id ^long [op ^long param]
+  (let [op-bits (primitive-action-op op)
+        packed  (bit-or (bit-shift-left op-bits 32) (bit-and param 0xFFFFFFFF))]
+    (- packed)))
+
+(defn table-primitive-action
+  "Return an action map for a table edit action for the ops:
+  :create, :update :delete."
+  [table fields op]
+  {:database_id (:database_id table)
+   :name        (name op)
+   :kind        op
+   :table_id    (:id table)
+   :id          (primitive-action-id op (:id table))
+   :visualization_settings
+   {:name ""
+    :type "button"
+    :description ""
+    :fields
+    (->> (for [field fields
+               :let [field-name (:name field)]]
+           [field-name
+            {:description ""
+             :placeholder ""
+             :name        field-name
+             :width       "medium"
+             :title       field-name
+             :hidden      false
+             :id          field-name
+             :order       999
+             :inputType   "string"
+             :required    (:database_required field)
+             :fieldType   nil}])
+         (into {}))}
+   :parameters
+   (->> (for [field fields
+              :let [field-name (:name field)]]
+          [field-name
+           {:value nil
+            :id    field-name
+            :type  :string/=
+            :target [:variable [:template-tag field-name]]
+            :name  field-name
+            :slug  field-name
+            :hasVariableTemplateTagTarget true}])
+        (into {}))})
+
+(defn select-primitive-action
+  "Returns the primitive action (map) for the given negative action id."
+  [primitive-action-id]
+  {:pre [(neg? primitive-action-id)]}
+  (let [[op param] (unpack-primitive-action-id primitive-action-id)
+        table      (t2/select-one :model/Table param)
+        fields     (t2/select :model/Field :table_id param)]
+    (table-primitive-action table fields op)))
 
 (defn dashcard->action
   "Get the action associated with a dashcard if exists, return `nil` otherwise."
   [dashcard-or-dashcard-id]
-  (some->> (t2/select-one-fn :action_id :model/DashboardCard :id (u/the-id dashcard-or-dashcard-id))
-           (select-action :id)))
+  ;; todo look at :action_id :primitive_action
+  (when-some [action-id (t2/select-one-fn :action_id :model/DashboardCard :id (u/the-id dashcard-or-dashcard-id))]
+    (if (neg? action-id)
+      (select-primitive-action action-id)
+      (select-action :id action-id))))
+
+(methodical/defmethod t2.hydrate/batched-hydrate [:model/DashboardCard :dashcard/action]
+  "Hydrates actions from DashboardCards. Adds a boolean field `:database-enabled-actions` to each action according to
+  the\n `database-enable-actions` setting for the action's database."
+  [_model _k dashcards]
+  (let [actions-by-id
+        (when-let [action-ids (seq (keep :action_id dashcards))]
+          (->> (select-actions nil :id [:in action-ids])
+               map-assoc-database-enable-actions
+               (m/index-by :id)))
+        table-ids
+        (->> dashcards
+             (keep (comp :table-id :table-action :visualization_settings))
+             distinct)
+        table-by-id
+        (when (seq table-ids)
+          (->> (t2/select :model/Table :id [:in table-ids])
+               (u/index-by :id)))
+        fields-by-id
+        (when (seq table-ids)
+          (->> (t2/select :model/Field :table_id [:in table-ids])
+               (group-by :table_id)))]
+    (for [dashcard dashcards
+          :let [action-id (:action_id dashcard)
+                action
+                (or (get actions-by-id action-id)
+                    (when-some [{:keys [table-id kind]} (:table-action (:visualization_settings dashcard))]
+                      (when-some [table (get table-by-id table-id)]
+                        (table-primitive-action table (get fields-by-id table-id []) kind))))]]
+      (m/assoc-some dashcard :action action))))
 
 ;;; ------------------------------------------------ Serialization ---------------------------------------------------
 
