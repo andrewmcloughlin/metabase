@@ -201,21 +201,35 @@ function buildSavedDashboardParameter(
   const parameterMappings = mappings.filter(
     (mapping) => mapping.parameter_id === parameter.id,
   );
-  const hasNativeQueryTarget = parameterMappings.some(
-    (mapping) => mapping.card.dataset_query?.type === "native",
-  );
+  const parameterFields = (fields?.[parameter.id] ?? [])
+    .map((field) => metadata.field(field.id))
+    .filter(isNotNull);
   const hasVariableTemplateTagTarget = parameterMappings.some((mapping) =>
     isParameterVariableTarget(mapping.target),
   );
-  const parameterFields = (fields?.[parameter.id] ?? [])
-    .map((field) => metadata.field(field.id))
-    .filter(isNotNull)
-    // TODO we need to preserve this hack until remapping is migrated to the BE. See #57571
-    .map((field) => (hasNativeQueryTarget ? field : (field.target ?? field)));
+
+  // TODO we need to preserve this hack until remapping is migrated to the BE. See #57571
+  // The hack is used to support field value remapping in a case where a
+  // parameter is connected to a PK and to a FK for the same PK, and there is a
+  // type/Name field in the PK table. It follows the same logic in
+  // `buildUnsavedDashboardParameter`.
+  // To fix this issue properly, we need:
+  // - Merge  #57571 where remapping will be done with new BE endpoints without
+  // calling field endpoints directly
+  // - Fix checks like `showRemapping` to handle a PK + FK case. Note that this
+  // code is duplicated; search for all places where we check for the number of
+  // fields, starting with parameter widgets.
+  const hasNativeQueryTarget = parameterMappings.some(
+    (mapping) => mapping.card.dataset_query?.type === "native",
+  );
+  const maybePkParameterFields = _.chain(parameterFields)
+    .map((field) => (hasNativeQueryTarget ? field : (field.target ?? field)))
+    .uniq((field) => field.id)
+    .value();
 
   return {
     ...parameter,
-    fields: parameterFields,
+    fields: maybePkParameterFields,
     hasVariableTemplateTagTarget,
   };
 }
