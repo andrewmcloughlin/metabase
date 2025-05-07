@@ -104,12 +104,12 @@ export type NewEntityInitiatedEvent = ValidateEvent<{
 
 export type NewButtonClickedEvent = ValidateEvent<{
   event: "new_button_clicked";
-  triggered_from: "app-bar" | "collection";
+  triggered_from: "app-bar" | "empty-collection";
 }>;
 
 export type NewButtonItemClickedEvent = ValidateEvent<{
   event: "new_button_item_clicked";
-  triggered_from: "question" | "native_query" | "dashboard" | "metabot";
+  triggered_from: "question" | "native-query" | "dashboard" | "metabot";
 }>;
 
 export type SimpleEvent =

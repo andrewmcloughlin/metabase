@@ -1,6 +1,6 @@
 import { trackSimpleEvent } from "metabase/lib/analytics";
 
-type SubItem = "question" | "native_query" | "dashboard" | "metabot";
+type SubItem = "question" | "native-query" | "dashboard" | "metabot";
 
 export const trackNewMenuItemClicked = (item: SubItem) =>
   trackSimpleEvent({
