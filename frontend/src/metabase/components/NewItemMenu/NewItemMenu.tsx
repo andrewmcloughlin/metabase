@@ -14,6 +14,8 @@ import {
 import { getSetting } from "metabase/selectors/settings";
 import type { CollectionId } from "metabase-types/api";
 
+import { trackNewMenuItemClicked } from "./analytics";
+
 export interface NewItemMenuProps {
   className?: string;
   collectionId?: CollectionId;
@@ -75,6 +77,7 @@ const NewItemMenu = ({
           cardType: "question",
         }),
         onClose: onCloseNavbar,
+        action: () => trackNewMenuItemClicked("question"),
       });
     }
 
@@ -90,13 +93,17 @@ const NewItemMenu = ({
           databaseId: lastUsedDatabaseId || undefined,
         }),
         onClose: onCloseNavbar,
+        action: () => trackNewMenuItemClicked("native_query"),
       });
     }
 
     items.push({
       title: t`Dashboard`,
       icon: "dashboard",
-      action: () => dispatch(setOpenModal("dashboard")),
+      action: () => {
+        trackNewMenuItemClicked("dashboard");
+        dispatch(setOpenModal("dashboard"));
+      },
     });
 
     if (
