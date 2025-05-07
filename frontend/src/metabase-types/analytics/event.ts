@@ -104,6 +104,7 @@ export type NewEntityInitiatedEvent = ValidateEvent<{
 
 export type NewButtonClickedEvent = ValidateEvent<{
   event: "new_button_clicked";
+  triggered_from: "app-bar" | "collection";
 }>;
 
 export type NewButtonItemClickedEvent = ValidateEvent<{
