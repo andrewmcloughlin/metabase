@@ -1,5 +1,6 @@
 import type { ChangeEvent, InputHTMLAttributes } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { t } from "ttag";
 import _ from "underscore";
 
 import {
@@ -118,7 +119,7 @@ const Slider = ({
       </TooltipContainer>
       <SliderInput
         type="range"
-        aria-label="min"
+        aria-label={t`Min`}
         value={value[0]}
         onChange={(e) => handleInput(e, 0)}
         onMouseUp={handleChange}
@@ -130,7 +131,7 @@ const Slider = ({
       />
       <SliderInput
         type="range"
-        aria-label="max"
+        aria-label={t`Max`}
         value={value[1]}
         onChange={(e) => handleInput(e, 1)}
         onMouseUp={handleChange}
