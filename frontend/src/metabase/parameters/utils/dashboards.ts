@@ -211,7 +211,7 @@ function buildSavedDashboardParameter(
   // TODO we need to preserve this hack until remapping is migrated to the BE. See #57571
   // The hack is used to support field value remapping in a case where a
   // parameter is connected to a PK and to a FK for the same PK, and there is a
-  // type/Name field in the PK table. It follows the same logic in
+  // type/Name field in the PK table. It follows the same logic as in
   // `buildUnsavedDashboardParameter`.
   // To fix this issue properly, we need:
   // - Merge  #57571 where remapping will be done with new BE endpoints without
